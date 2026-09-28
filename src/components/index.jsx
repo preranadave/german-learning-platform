@@ -1,24 +1,30 @@
 import { useState, useRef } from 'react'
-export function speak(text, rate = 0.9) {
+export function speak(text, rate = 0.9, onEnd) {
   if (!('speechSynthesis' in window)) return false
   speechSynthesis.cancel()
   const u = new SpeechSynthesisUtterance(text); u.lang = 'de-DE'; u.rate = rate
   const v = speechSynthesis.getVoices().find(v => v.lang.startsWith('de')); if (v) u.voice = v
+  u.onend = u.onerror = () => onEnd && onEnd()
   speechSynthesis.speak(u); return true
 }
 export function AudioButton({ text }) {
-  return <span className="audio">
-    <button className="btn icon" aria-label={`Listen: ${text}`} onClick={() => speak(text, 0.9)}>🔊</button>
-    <button className="btn icon" aria-label={`Slow: ${text}`} onClick={() => speak(text, 0.5)}>🐢</button>
+  const [on, setOn] = useState(false), [pz, setPz] = useState(false), last = useRef(0.9)
+  const play = r => { last.current = r; setPz(false); setOn(true); if (!speak(text, r, () => setOn(false))) setOn(false) }
+  const pause = () => { if (pz) { speechSynthesis.resume(); setPz(false) } else { speechSynthesis.pause(); setPz(true) } }
+  return <span className={'audio' + (on ? ' playing' : '')}>
+    <button className="btn icon" aria-label={`Listen: ${text}`} onClick={() => play(0.9)}>🔊</button>
+    <button className="btn icon" aria-label={`Slow: ${text}`} onClick={() => play(0.5)}>🐢</button>
+    <button className="btn icon" aria-label={pz ? 'Resume' : 'Pause'} disabled={!on} onClick={pause}>{pz ? '▶' : '⏸'}</button>
+    <button className="btn icon" aria-label={`Replay: ${text}`} onClick={() => play(last.current)}>🔁</button>
   </span>
 }
 export function VocabCard({ word, settings }) {
   const full = word.article ? `${word.article} ${word.de}` : word.de
   return <article className="card vocab">
-    <div className="de">{full}</div>
+    <div className="de">{word.article && <span className={'art art-' + word.article}>{word.article}</span>} {word.de}</div>
     <div className="pron">say: {word.pron}</div>
     <AudioButton text={full} />
-    {settings.en && <div className="meaning">{word.en} <em>({word.type}{word.plural ? ` · plural: ${word.plural}` : ''})</em></div>}
+    {settings.en && <div className="meaning">{word.en} <em>({word.type}{word.article ? ' · ' + { der: 'masculine', die: 'feminine', das: 'neuter' }[word.article] : ''}{word.plural ? ` · plural: ${word.plural}` : ''})</em></div>}
     {settings.hi && <div className="meaning hi">{word.hi}</div>}
     <p className="ex"><b>{word.ex}</b> <AudioButton text={word.ex} />{settings.en && <><br/><span className="muted">{word.exEn}</span></>}</p>
   </article>
@@ -63,7 +69,7 @@ export function Speaking({ target }) {
   const missing = exp.filter(w => !got.includes(w))
   return <div className="card">
     <div className="de">{target}</div><AudioButton text={target} />
-    <div className="row"><button className="btn" onClick={go} disabled={rec}>{rec ? 'Listening…' : '🎙 Speak'}</button></div>
+    <div className="row"><button className={'btn' + (rec ? ' rec' : '')} onClick={go} disabled={rec}>{rec ? '● Listening…' : '🎙 Tap to speak'}</button></div>
     {heard !== null && (heard === '' ? <p className="bad">Nothing was heard. Check your microphone permission and try again.</p> : <>
       <p>I heard: {got.map((w, i) => <span key={i} className={exp.includes(w) ? 'ok' : 'bad'}>{w} </span>)}</p>
       {missing.length === 0 ? <p className="ok">Every word matched. Try once more at normal speed.</p> : <p className="bad">Missing or unclear: <b>{missing.join(', ')}</b>. Listen with 🐢, then repeat slowly. Watch ch, w and ü sounds.</p>}</>)}
